@@ -1,0 +1,1049 @@
+{
+  "name": "YouTube Shorts Autonomous Production",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "93ec852b-180c-4d89-9ce2-912576c2b8a2",
+      "name": "When clicking Execute workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-niche",
+              "name": "niche",
+              "value": "Top 3 must-visit places in Cox's Bazar, Bangladesh",
+              "type": "string"
+            },
+            {
+              "id": "cfg-template",
+              "name": "creatomateTemplateId",
+              "value": "766b3b14-69e4-466b-bfab-5cf181c1d871",
+              "type": "string"
+            },
+            {
+              "id": "cfg-privacy",
+              "name": "youtubePrivacyStatus",
+              "value": "public",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "82b85e40-70bf-4678-ac96-e3f45382289b",
+      "name": "Config: Niche & Template",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3.5-flash",
+          "cachedResultName": "models/gemini-3.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a professional YouTube Shorts content creator.\n\nCreate a complete 30-second YouTube Short based on the topic below.\n\nTopic: {{ $json.niche }}\nLanguage: English\nDuration: 30 seconds\nScene_count: 5\n\nThe video must contain EXACTLY 5 scenes. Each scene must be approximately 6 seconds.\n\nCreate:\n1. A YouTube title (under 70 chars)\n2. A 30-second narration/script. Plain spoken text only, no scene labels like [Scene 1], no emojis.\n3. Five stock-photo search queries, one per scene, in the same order as the script\n4. YouTube description with 3 hashtags\n5. YouTube tags (array of 6 tags)\n\nIMPORTANT REQUIREMENTS:\n- Use real, well-known places that actually exist in the topic location.\n- Exactly 5 items in the \"imagePrompts\" array.\n- Each item in \"imagePrompts\" is a SHORT real-photo search query (3 to 6 words, English) naming the real place shown in that scene, for example \"Inani Beach Cox's Bazar\" or \"Himchari waterfall Bangladesh\". Always include the country or city name. If a place is very obscure, use a broader query such as \"Cox's Bazar beach sunset\". No sentences, no styling words.\n- The first scene is a strong hook and the last scene a memorable ending.\n- Keep the story factual and high engagement.\n\nCRITICAL: Return ONLY a valid JSON object. No markdown code blocks, no intro, no outro text. Use EXACTLY this JSON structure:\n\n{\n  \"title\": \"Your catchy title here\",\n  \"description\": \"Your video description with #hashtags\",\n  \"script\": \"Full 30-second voiceover script text here\",\n  \"tags\": [\"tag1\", \"tag2\", \"tag3\", \"tag4\", \"tag5\", \"tag6\"],\n  \"imagePrompts\": [\n    \"photo search query for scene 1\",\n    \"photo search query for scene 2\",\n    \"photo search query for scene 3\",\n    \"photo search query for scene 4\",\n    \"photo search query for scene 5\"\n  ]\n}"
+            }
+          ]
+        },
+        "simplify": false,
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "9181e7b5-5fec-4639-8d0e-008e26f5c774",
+      "name": "Gemini Content Generator",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        -688
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\n\nlet config = {};\ntry {\n  config = $('Config: Niche & Template').first().json;\n} catch (e) {\n  config = {};\n}\n\nlet parsed = {};\nlet rawText = '';\n\nif (inputData.candidates && inputData.candidates[0]?.content?.parts[0]?.text) {\n  rawText = inputData.candidates[0].content.parts[0].text;\n} else if (typeof inputData.text === 'string') {\n  rawText = inputData.text;\n} else if (inputData.output) {\n  rawText = typeof inputData.output === 'string' ? inputData.output : JSON.stringify(inputData.output);\n} else {\n  parsed = inputData;\n}\n\nif (rawText) {\n  try {\n    const cleanText = rawText.replace(/```json|```/g, '').trim();\n    parsed = JSON.parse(cleanText);\n  } catch (e) {\n    parsed = inputData;\n  }\n}\n\nlet prompts = parsed.imagePrompts || parsed.image_prompts || parsed.prompts;\n\nif (!prompts && Array.isArray(parsed.scenes)) {\n  prompts = parsed.scenes.map(s => typeof s === 'string' ? s : (s.image_prompt || s.imagePrompt || s.prompt || s.visual));\n}\n\nif (!prompts || !Array.isArray(prompts) || prompts.length === 0) {\n  throw new Error('Gemini Output Processing Error: imagePrompts array not found. Extracted data: ' + JSON.stringify(parsed));\n}\n\nreturn [{\n  json: {\n    ...parsed,\n    imagePrompts: prompts,\n    runId: Date.now().toString(),\n    creatomateTemplateId: config.creatomateTemplateId || '',\n    youtubePrivacyStatus: config.youtubePrivacyStatus || 'public'\n  }\n}];"
+      },
+      "id": "42c26b48-354e-4635-a205-d5bc9ec72a15",
+      "name": "Parse Gemini Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nif (!item.imagePrompts || !Array.isArray(item.imagePrompts) || item.imagePrompts.length === 0) {\n  throw new Error('Split Image Prompts Error: No imagePrompts array received to split.');\n}\n\nreturn item.imagePrompts.map((prompt, idx) => ({\n  json: {\n    sceneIndex: idx + 1,\n    prompt: typeof prompt === 'object' ? (prompt.text || JSON.stringify(prompt)) : prompt,\n    runId: item.runId,\n    title: item.title || '',\n    script: item.script || ''\n  }\n}));"
+      },
+      "id": "5c1716c8-1aea-4526-895f-cba2957ac80b",
+      "name": "Split Image Prompts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "name": "=scene_{{ $(\"Split Image Prompts\").item.json.sceneIndex }}_{{ $(\"Split Image Prompts\").item.json.runId }}.jpg",
+        "driveId": {
+          "__rl": true,
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive",
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "id": "d973f4e4-229c-457a-ae3a-3dfb6242ab4a",
+      "name": "Google Drive: Upload Scene Image",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1792,
+        -784
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lmubDA2pfIo4wyGt",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      },
+      "id": "2f52880d-ffad-4258-b3bb-140a54dea61f",
+      "name": "Google Drive: Share Scene Image",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2016,
+        -784
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lmubDA2pfIo4wyGt",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "img-public-url",
+              "name": "publicUrl",
+              "value": "={{ \"https://lh3.googleusercontent.com/d/\" + $(\"Google Drive: Upload Scene Image\").item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "img-scene-index",
+              "name": "sceneIndex",
+              "value": "={{ $(\"Split Image Prompts\").item.json.sceneIndex }}",
+              "type": "string"
+            },
+            {
+              "id": "img-run-id",
+              "name": "runId",
+              "value": "={{ $(\"Split Image Prompts\").item.json.runId }}",
+              "type": "string"
+            },
+            {
+              "id": "img-file-id",
+              "name": "fileId",
+              "value": "={{ $(\"Google Drive: Upload Scene Image\").item.json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fd6c1707-25a2-4a5f-a643-76fd05b9f126",
+      "name": "Set: Build Image Public URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2240,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "sceneIndex"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fed32370-a3e2-4a6e-b1d4-9c551eb49bf6",
+      "name": "Sort by Scene Index",
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "imageUrls",
+        "options": {}
+      },
+      "id": "78fb6e92-7824-4e0c-a66f-0d6ede44aae4",
+      "name": "Aggregate Image URLs",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aggregatedData = $input.first().json;\nconst original = $('Parse Gemini Output').first().json;\n\nconst imageUrls = (aggregatedData.imageUrls || []).map(item => item.publicUrl);\n\nreturn [{\n  json: {\n    runId: original.runId,\n    imageUrls: imageUrls\n  }\n}];"
+      },
+      "id": "d3273da6-70f2-4fa6-a7d2-45d15e149689",
+      "name": "Attach RunId to Image Bundle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "advanced": true,
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "runId",
+              "field2": "runId"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "edc69627-3ab9-4761-8861-57ed33735da1",
+      "name": "Merge Audio + Images",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3136,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "name": "=voiceover_{{ $('Parse Gemini Output').first().json.runId }}.mp3",
+        "driveId": {
+          "__rl": true,
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive",
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "id": "13e05ac3-f279-4543-923e-21f0bba93ee6",
+      "name": "Google Drive: Upload Voiceover",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2464,
+        -592
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lmubDA2pfIo4wyGt",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      },
+      "id": "d4f3137c-6f23-4298-bbe4-e0ab0367b24c",
+      "name": "Google Drive: Share Voiceover",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2688,
+        -592
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lmubDA2pfIo4wyGt",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Parse Gemini Output').first().json;\nconst uploadVoice = $('Google Drive: Upload Voiceover').first().json;\n\nreturn [{\n  json: {\n    runId: original.runId,\n    audioUrl: `https://drive.google.com/uc?export=download&id=${uploadVoice.id}`\n  }\n}];"
+      },
+      "id": "52c75715-f380-4cc7-aef1-7aa499519c43",
+      "name": "Attach RunId to Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const merged = $input.first().json;\nconst scriptData = $('Parse Gemini Output').first().json;\n\nconst SCENE_SEC = 6;\nconst urls = (merged.imageUrls || []).slice(0, 5);\nconst total = SCENE_SEC * 5;\n\nconst elements = urls.map((url, i) => ({\n  type: 'image',\n  track: 1,\n  time: i * SCENE_SEC,\n  duration: SCENE_SEC,\n  source: url,\n  fit: 'cover',\n  width: '100%',\n  height: '100%',\n  animations: [\n    { time: 0, duration: SCENE_SEC, easing: 'linear', type: 'scale', scope: 'element', start_scale: '100%', end_scale: '112%', fade: false }\n  ]\n}));\n\nelements.push({\n  type: 'audio',\n  track: 2,\n  time: 0,\n  duration: total,\n  source: merged.audioUrl\n});\n\nelements.push({\n  type: 'text',\n  track: 3,\n  time: 0,\n  duration: 4,\n  text: scriptData.title || '',\n  x: '50%',\n  y: '12%',\n  width: '86%',\n  x_alignment: '50%',\n  y_alignment: '50%',\n  font_family: 'Montserrat',\n  font_weight: '800',\n  font_size: '6 vmin',\n  fill_color: '#ffffff',\n  stroke_color: '#000000',\n  stroke_width: '0.5 vmin',\n  animations: [{ time: 'end', duration: 0.5, easing: 'linear', type: 'fade', transition: true }]\n});\n\nconst source = {\n  output_format: 'mp4',\n  width: 1080,\n  height: 1920,\n  duration: total,\n  frame_rate: 30,\n  elements\n};\n\nreturn [{\n  json: {\n    source,\n    runId: scriptData.runId,\n    title: scriptData.title,\n    description: scriptData.description,\n    tags: scriptData.tags,\n    attempts: 0\n  }\n}];"
+      },
+      "id": "70c4187a-4292-4213-9deb-14a17eb7cadc",
+      "name": "Build Creatomate Render Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.creatomate.com/v1/renders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer f3deb6aab557485fa78e8c3e690710447b270f09ef1455d19379a6bb4bed04ca5227cb7ea19e17325f36d4102324f4ec"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: { ...$json.source, width: 720, height: 1280, frame_rate: 25 } }) }}",
+        "options": {}
+      },
+      "id": "5b1e8657-b366-43ff-bf60-9007c5fe81c3",
+      "name": "Creatomate: Start Render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst render = Array.isArray(res) ? res[0] : res;\nconst ctx = $('Build Creatomate Render Payload').first().json;\n\nreturn [{\n  json: {\n    ...ctx,\n    renderId: render.id,\n    renderStatus: render.status,\n    renderUrl: render.url || '',\n    attempts: 0\n  }\n}];"
+      },
+      "id": "84ece426-6b11-4ba0-903a-9df965a302a9",
+      "name": "Extract Render ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "id": "33ae0ae9-d910-42d9-81e9-813c58939c87",
+      "name": "Wait 10s Before Poll",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4032,
+        -688
+      ],
+      "webhookId": "ef6c3e30-49e8-4114-890c-b15ee8d5836c"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.creatomate.com/v1/renders/{{ $json.renderId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer f3deb6aab557485fa78e8c3e690710447b270f09ef1455d19379a6bb4bed04ca5227cb7ea19e17325f36d4102324f4ec"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7e90e265-ca46-4c24-91de-10bd48213ede",
+      "name": "Creatomate: Check Render Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4256,
+        -752
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const statusRes = $input.first().json;\nconst render = Array.isArray(statusRes) ? statusRes[0] : statusRes;\nconst prevData = $('Wait 10s Before Poll').first().json;\n\nreturn [{\n  json: {\n    ...prevData,\n    renderStatus: render.status,\n    renderUrl: render.url || '',\n    attempts: (prevData.attempts || 0) + 1\n  }\n}];"
+      },
+      "id": "2adb940d-a01a-4c31-9f4a-e77c101fbeb9",
+      "name": "Merge Status Into Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4480,
+        -752
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.renderStatus }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "succeeded"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "034d507b-7cfd-409a-981f-fdb8afcdf5c8",
+      "name": "If: Render Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4704,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.renderUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "e868fe70-7ec8-425c-a340-106c61a4c1a3",
+      "name": "Download Rendered MP4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4928,
+        -688
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://texttospeech.googleapis.com/v1/text:synthesize?key=AIzaSyAhCmgNE_4AgUiYjrpd61rTKOKXDc76uj8",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: { text: $json.script }, voice: { languageCode: 'en-US', name: 'en-US-Journey-F' }, audioConfig: { audioEncoding: 'MP3' } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "7d866235-79fe-496c-a4f9-ebfb31d61d6f",
+      "name": "Google TTS: Generate Voiceover",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2016,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const binaryData = Buffer.from($input.first().json.audioContent, 'base64');\nreturn [{\n  binary: {\n    data: {\n      data: binaryData.toString('base64'),\n      mimeType: 'audio/mp3',\n      fileName: 'voiceover.mp3'\n    }\n  },\n  json: {}\n}];"
+      },
+      "id": "8a26bd1f-377b-49ad-b654-a88b77197447",
+      "name": "Convert Base64 to MP3 Audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://commons.wikimedia.org/w/api.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "action",
+              "value": "query"
+            },
+            {
+              "name": "generator",
+              "value": "search"
+            },
+            {
+              "name": "gsrsearch",
+              "value": "={{ $json.prompt + (/cox/i.test($json.prompt) ? '' : \" Cox's Bazar\") + ' filetype:bitmap' }}"
+            },
+            {
+              "name": "gsrnamespace",
+              "value": "6"
+            },
+            {
+              "name": "gsrlimit",
+              "value": "10"
+            },
+            {
+              "name": "prop",
+              "value": "imageinfo"
+            },
+            {
+              "name": "iiprop",
+              "value": "url|size|mime"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ShortsAutomation/1.0 (nworkflow202@gmail.com)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b321cc9f-26bb-4dcd-a817-75b4ad29b04c",
+      "name": "Pixabay: Search Photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "photoUrl",
+              "name": "photoUrl",
+              "type": "string",
+              "value": "={{ (() => { const pages = Object.values($json.query?.pages || {}); const ok = pages.filter(p => { const i = p.imageinfo?.[0]; return i && /jpe?g|png/.test(i.mime||'') && i.width >= 800 && i.size <= 12000000; }).sort((a,b) => (a.index||0)-(b.index||0)); const i = ok[0]?.imageinfo?.[0]; return i ? i.url : 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Cox%27s_Bazar_Sea_Beach.jpg/1080px-Cox%27s_Bazar_Sea_Beach.jpg'; })() }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "320daa47-a77e-4fed-9f8c-cce066787ee2",
+      "name": "Pixabay: Pick Photo URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1344,
+        -784
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.photoUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ShortsAutomation/1.0 (nworkflow202@gmail.com)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "3b5f8734-689e-4afa-8080-14eea2051685",
+      "name": "Pixabay: Download Photo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        -784
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Parse Gemini Output').first().json.title }}",
+        "regionCode": "BD",
+        "categoryId": "19",
+        "options": {
+          "description": "={{ $('Parse Gemini Output').first().json.description }}",
+          "privacyStatus": "public",
+          "selfDeclaredMadeForKids": false,
+          "tags": "={{ ($('Parse Gemini Output').first().json.tags || []).join(',') }}"
+        }
+      },
+      "id": "9ad081d6-d7eb-47e7-8a86-e45cf19b472b",
+      "name": "YouTube: Upload Video",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        5152,
+        -688
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "VIeQTIoWKtaRFLnU",
+          "name": "YouTube account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking Execute workflow": {
+      "main": [
+        [
+          {
+            "node": "Config: Niche & Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config: Niche & Template": {
+      "main": [
+        [
+          {
+            "node": "Gemini Content Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Content Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gemini Output": {
+      "main": [
+        [
+          {
+            "node": "Split Image Prompts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google TTS: Generate Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Upload Scene Image": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Share Scene Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Share Scene Image": {
+      "main": [
+        [
+          {
+            "node": "Set: Build Image Public URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Build Image Public URL": {
+      "main": [
+        [
+          {
+            "node": "Sort by Scene Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort by Scene Index": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Image URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Image URLs": {
+      "main": [
+        [
+          {
+            "node": "Attach RunId to Image Bundle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach RunId to Image Bundle": {
+      "main": [
+        [
+          {
+            "node": "Merge Audio + Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Audio + Images": {
+      "main": [
+        [
+          {
+            "node": "Build Creatomate Render Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Upload Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Share Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Share Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Attach RunId to Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach RunId to Audio": {
+      "main": [
+        [
+          {
+            "node": "Merge Audio + Images",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Build Creatomate Render Payload": {
+      "main": [
+        [
+          {
+            "node": "Creatomate: Start Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creatomate: Start Render": {
+      "main": [
+        [
+          {
+            "node": "Extract Render ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Render ID": {
+      "main": [
+        [
+          {
+            "node": "Wait 10s Before Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10s Before Poll": {
+      "main": [
+        [
+          {
+            "node": "Creatomate: Check Render Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Creatomate: Check Render Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Status Into Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Status Into Context": {
+      "main": [
+        [
+          {
+            "node": "If: Render Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Render Complete?": {
+      "main": [
+        [
+          {
+            "node": "Download Rendered MP4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 10s Before Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google TTS: Generate Voiceover": {
+      "main": [
+        [
+          {
+            "node": "Convert Base64 to MP3 Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Base64 to MP3 Audio": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Upload Voiceover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Image Prompts": {
+      "main": [
+        [
+          {
+            "node": "Pixabay: Search Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pixabay: Search Photo": {
+      "main": [
+        [
+          {
+            "node": "Pixabay: Pick Photo URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pixabay: Pick Photo URL": {
+      "main": [
+        [
+          {
+            "node": "Pixabay: Download Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pixabay: Download Photo": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Upload Scene Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Rendered MP4": {
+      "main": [
+        [
+          {
+            "node": "YouTube: Upload Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "ff210bf1-eb3b-4d7d-9feb-e7b0f7356afc",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fe7dd3a2ab06d306596b7a97bf4aa859ceecc769d91656dcd5f9c08f5cc44919"
+  },
+  "nodeGroups": [],
+  "id": "FAzFeR2U3DAQbNwQ",
+  "tags": []
+}
